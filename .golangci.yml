@@ -25,9 +25,14 @@ linters:
           allow:
             - $gostd
             - proba/server
+            - github.com/rs/zerolog
+            - github.com/ydb-platform/ydb-go-sdk/v3
+            - github.com/google/uuid
           deny:
             - pkg: "log"
-              desc: "используй internal/platform/zerolog, не стандартный log"
+              desc: "используй internal/platform/logger, не стандартный log"
+            - pkg: "log/slog"
+              desc: "используй internal/platform/logger, не стандартный slog"
 
   exclusions:
     generated: lax
