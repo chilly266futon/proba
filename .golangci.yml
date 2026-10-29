@@ -1,0 +1,42 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - misspell
+    - revive
+    - godot
+    - depguard
+
+  settings:
+    depguard:
+      rules:
+        main:
+          files:
+            - "!**/*_test.go"
+          allow:
+            - $gostd
+            - proba/server
+          deny:
+            - pkg: "log"
+              desc: "используй internal/platform/zerolog, не стандартный log"
+
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go$
+        linters:
+          - errcheck
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports

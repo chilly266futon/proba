@@ -1,0 +1,31 @@
+# Binaries
+/cmd/**/bin/
+/bin/
+*.exe
+*.test
+*.out
+
+# Build artifacts
+dist/
+build/
+coverage.out
+
+# Go
+vendor/
+*.prof
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+
+# Env (конфигурация — только через окружение)
+.env
+.env.*
+!.env.example
+
+# Локальные заметки и выгрузки
+*.local.md
