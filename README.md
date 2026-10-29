@@ -26,4 +26,4 @@ spikes/                     заметки по спайкам (YDB)
 
 ## CI
 
-Проверки: `go vet`, `golangci-lint` (включая `depguard` — изоляция модулей), `go test ./...`. Конфигурация — `.golangci.yml`, пайплайн — `src.yaml`.
+Проверки: `go vet`, `golangci-lint` (включая `depguard` — изоляция модулей), `go test ./...`. Конфигурация — `.golangci.yml`, пайплайн — `.sourcecraft/ci.yaml`.
