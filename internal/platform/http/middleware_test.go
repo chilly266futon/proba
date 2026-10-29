@@ -14,10 +14,8 @@ func TestRequestIDGeneratesAndPropagates(t *testing.T) {
 	var got string
 
 	srv := New(ServerOpts{})
-	srv.Use(RequestID)
-	srv.mux.HandleFunc("GET /x", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
+	srv.mux.HandleFunc("GET /x", func(_ stdhttp.ResponseWriter, r *stdhttp.Request) {
 		got = RequestIDFrom(r.Context())
-		w.Header().Set(HeaderRequestID, got)
 	})
 
 	rec := httptest.NewRecorder()
@@ -35,10 +33,7 @@ func TestRequestIDReusesIncoming(t *testing.T) {
 	incoming := "req-12345"
 
 	srv := New(ServerOpts{})
-	srv.Use(RequestID)
-	srv.mux.HandleFunc("GET /x", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-		w.Header().Set(HeaderRequestID, RequestIDFrom(r.Context()))
-	})
+	srv.mux.HandleFunc("GET /x", func(stdhttp.ResponseWriter, *stdhttp.Request) {})
 
 	req := httptest.NewRequest("GET", "/x", nil)
 	req.Header.Set(HeaderRequestID, incoming)
@@ -53,8 +48,6 @@ func TestRequestIDReusesIncoming(t *testing.T) {
 
 func TestRecoverAnswersContractError(t *testing.T) {
 	srv := New(ServerOpts{})
-	srv.Use(RequestID)
-	srv.Use(Recover)
 	srv.mux.HandleFunc("GET /panic", func(stdhttp.ResponseWriter, *stdhttp.Request) {
 		panic("boom")
 	})
@@ -83,8 +76,6 @@ func TestLoggingWritesAccessLog(t *testing.T) {
 	log := zerolog.New(&sb).Level(zerolog.InfoLevel)
 
 	srv := New(ServerOpts{Log: log})
-	srv.Use(RequestID)
-	srv.Use(Logging)
 	srv.mux.HandleFunc("GET /x", func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		WriteNoContent(w)
 	})
@@ -95,7 +86,51 @@ func TestLoggingWritesAccessLog(t *testing.T) {
 	if rec.Code != stdhttp.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
-	if !strings.Contains(sb.String(), "status=204") {
-		t.Errorf("access-лог не содержит статус 204: %q", sb.String())
+
+	lines := strings.Split(strings.TrimSpace(sb.String()), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("access-лог: %d записей, want 1: %q", len(lines), sb.String())
+	}
+
+	var entry struct {
+		Status int    `json:"status"`
+		Method string `json:"method"`
+		Path   string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &entry); err != nil {
+		t.Fatalf("access-лог не JSON: %v", err)
+	}
+	if entry.Status != 204 || entry.Method != "GET" || entry.Path != "/x" {
+		t.Errorf("access-лог = %+v, want GET /x 204", entry)
+	}
+}
+
+func TestRequestIDRejectsUnsafeIncoming(t *testing.T) {
+	for _, bad := range []string{"has space", "new\nline", strings.Repeat("a", maxRequestIDLen+1), "кириллица"} {
+		srv := New(ServerOpts{})
+		srv.mux.HandleFunc("GET /x", func(stdhttp.ResponseWriter, *stdhttp.Request) {})
+
+		req := httptest.NewRequest("GET", "/x", nil)
+		req.Header[HeaderRequestID] = []string{bad} // в обход канонизации и проверок httptest
+		rec := httptest.NewRecorder()
+
+		srv.Handler().ServeHTTP(rec, req)
+
+		if got := rec.Header().Get(HeaderRequestID); got == bad || !validRequestID(got) {
+			t.Errorf("входящий %q: ответный id = %q, want новый валидный", bad, got)
+		}
+	}
+}
+
+func TestPanicIsLoggedWith500(t *testing.T) {
+	var sb strings.Builder
+	srv := New(ServerOpts{Log: zerolog.New(&sb).Level(zerolog.InfoLevel)})
+	srv.mux.HandleFunc("GET /panic", func(stdhttp.ResponseWriter, *stdhttp.Request) { panic("boom") })
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/panic", nil))
+
+	if !strings.Contains(sb.String(), `"status":500`) {
+		t.Errorf("запрос с паникой не попал в access-лог со статусом 500: %q", sb.String())
 	}
 }

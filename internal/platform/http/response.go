@@ -25,7 +25,7 @@ type ErrorResponse struct {
 	RequestID string         `json:"request_id,omitempty"`
 }
 
-// WriteJSON пишет ответ с кодом 200 и телом.
+// WriteJSON пишет ответ с заданным статусом и JSON-телом (body == nil — без тела).
 func WriteJSON(w stdhttp.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)

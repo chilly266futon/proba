@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	stdhttp "net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,13 +19,37 @@ type (
 	loggerCtxKey    struct{}
 )
 
-// RequestID генерирует (или прокидывает) request_id на каждый запрос.
+// maxRequestIDLen — предел длины входящего request_id.
+const maxRequestIDLen = 64
+
+// validRequestID пропускает только короткие значения из безопасных символов:
+// входящий заголовок попадает в логи и ответы, поэтому ему нельзя доверять.
+func validRequestID(id string) bool {
+	if id == "" || len(id) > maxRequestIDLen {
+		return false
+	}
+
+	for _, c := range id {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_', c == '.':
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
+// RequestID генерирует (или прокидывает) request_id на каждый запрос
+// и возвращает его в заголовке ответа. Невалидный входящий id заменяется новым.
 func RequestID(next stdhttp.Handler) stdhttp.Handler {
 	return stdhttp.HandlerFunc(func(w stdhttp.ResponseWriter, r *stdhttp.Request) {
 		id := r.Header.Get(HeaderRequestID)
-		if id == "" {
+		if !validRequestID(id) {
 			id = uuid.NewString()
 		}
+
+		w.Header().Set(HeaderRequestID, id)
 
 		ctx := context.WithValue(r.Context(), requestIDCtxKey{}, id)
 		r = r.WithContext(ctx)
@@ -80,6 +105,9 @@ func (w *statusWriter) WriteHeader(code int) {
 func (w *statusWriter) Status() int       { return w.code }
 func (w *statusWriter) RequestID() string { return w.id }
 
+// Unwrap нужен http.ResponseController (Flush, SetWriteDeadline и т.д.).
+func (w *statusWriter) Unwrap() stdhttp.ResponseWriter { return w.ResponseWriter }
+
 func extractStatus(w stdhttp.ResponseWriter) int {
 	if sw, ok := w.(interface{ Status() int }); ok {
 		return sw.Status()
@@ -113,11 +141,9 @@ func RequestIDFrom(ctx context.Context) string {
 // RemoteIP достаёт IP клиента (X-Forwarded-For от API Gateway).
 func RemoteIP(r *stdhttp.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if idx := indexByte(xff, ','); idx > 0 {
-			return xff[:idx]
-		}
+		first, _, _ := strings.Cut(xff, ",")
 
-		return xff
+		return strings.TrimSpace(first)
 	}
 
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -126,14 +152,4 @@ func RemoteIP(r *stdhttp.Request) string {
 	}
 
 	return host
-}
-
-func indexByte(s string, b byte) int {
-	for i := 0; i < len(s); i++ {
-		if s[i] == b {
-			return i
-		}
-	}
-
-	return -1
 }

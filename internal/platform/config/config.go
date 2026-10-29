@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -68,6 +69,16 @@ type YMQConfig struct {
 
 // Load собирает конфигурацию из env.
 func Load() (Config, error) {
+	accessTTL, err := getenvDuration("JWT_ACCESS_TTL_SECONDS", 15*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
+
+	refreshTTL, err := getenvDuration("JWT_REFRESH_TTL_SECONDS", 30*24*time.Hour)
+	if err != nil {
+		return Config{}, err
+	}
+
 	cfg := Config{
 		Env: getenv("APP_ENV", EnvDev),
 		HTTP: HTTPConfig{
@@ -79,8 +90,8 @@ func Load() (Config, error) {
 		},
 		JWT: JWTConfig{
 			Secret:     getenv("JWT_SECRET", ""),
-			AccessTTL:  getenvDuration("JWT_ACCESS_TTL_SECONDS", 15*time.Minute),
-			RefreshTTL: getenvDuration("JWT_REFRESH_TTL_SECONDS", 30*24*time.Hour),
+			AccessTTL:  accessTTL,
+			RefreshTTL: refreshTTL,
 		},
 		YDB: YDBConfig{
 			Endpoint: getenv("YDB_ENDPOINT", ""),
@@ -126,7 +137,7 @@ func (c Config) validate() error {
 		missing = append(missing, "S3_BUCKET")
 	}
 	if len(missing) > 0 {
-		return errors.New("config: обязательные переменные не заданы: " + join(missing))
+		return errors.New("config: обязательные переменные не заданы: " + strings.Join(missing, ", "))
 	}
 
 	return nil
@@ -140,28 +151,18 @@ func getenv(key, fallback string) string {
 	return fallback
 }
 
-func getenvDuration(key string, fallback time.Duration) time.Duration {
+// getenvDuration читает целое число секунд; пустое значение — fallback,
+// мусор или неположительное число — ошибка (молча подменять опечатку в TTL опасно).
+func getenvDuration(key string, fallback time.Duration) (time.Duration, error) {
 	v := os.Getenv(key)
 	if v == "" {
-		return fallback
+		return fallback, nil
 	}
 
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n <= 0 {
-		return fallback
+		return 0, fmt.Errorf("config: %s=%q, ожидается положительное число секунд", key, v)
 	}
 
-	return time.Duration(n) * time.Second
-}
-
-func join(parts []string) string {
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += ", "
-		}
-		out += p
-	}
-
-	return out
+	return time.Duration(n) * time.Second, nil
 }

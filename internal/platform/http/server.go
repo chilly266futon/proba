@@ -23,7 +23,8 @@ type Server struct {
 	chain []func(stdhttp.Handler) stdhttp.Handler
 }
 
-// New создаёт сервер с базовой цепочкой middleware (request_id, recover, log).
+// New создаёт сервер с базовой цепочкой middleware: request_id → log → recover.
+// Recover — самый внутренний, чтобы запрос с паникой всё равно попал в access-лог со статусом 500.
 func New(opts ServerOpts) *Server {
 	log := opts.Log
 	if log.GetLevel() == zerolog.NoLevel || log.GetLevel() == zerolog.Disabled {
@@ -36,13 +37,14 @@ func New(opts ServerOpts) *Server {
 		chain: []func(stdhttp.Handler) stdhttp.Handler{},
 	}
 	s.Use(RequestID)
-	s.Use(Recover)
 	s.Use(Logging)
+	s.Use(Recover)
 
 	return s
 }
 
-// Use добавляет middleware в конец цепочки (последний добавленный — самый внешний).
+// Use добавляет middleware в конец цепочки: первый добавленный — самый внешний,
+// последний — ближе всех к обработчику.
 func (s *Server) Use(mw func(stdhttp.Handler) stdhttp.Handler) {
 	s.chain = append(s.chain, mw)
 }

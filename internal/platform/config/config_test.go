@@ -90,3 +90,17 @@ func TestLoadInvalidEnv(t *testing.T) {
 		t.Fatal("APP_ENV=staging: Load() = nil, want error")
 	}
 }
+
+func TestLoadInvalidDuration(t *testing.T) {
+	for _, v := range []string{"abc", "0", "-5"} {
+		setEnv(t, map[string]string{"APP_ENV": "dev", "JWT_ACCESS_TTL_SECONDS": v})
+
+		_, err := Load()
+		if err == nil {
+			t.Fatalf("JWT_ACCESS_TTL_SECONDS=%q: Load() = nil, want error", v)
+		}
+		if !strings.Contains(err.Error(), "JWT_ACCESS_TTL_SECONDS") {
+			t.Errorf("error = %q, want mention of variable", err)
+		}
+	}
+}
